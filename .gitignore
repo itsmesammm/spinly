@@ -1,2 +1,13 @@
-# created by virtualenv automatically
-.venv/bin
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# IDE
+.idea/
+
+# System
+.DS_Store
