@@ -7,3 +7,4 @@ class Settings(BaseSettings):
         env_file = ".env"  # It tells Pydantic to load values from `.env` file
 
 settings = Settings()  # Creates an instance of Settings, so we can use `settings.DATABASE_URL`
+print("🚀 Loaded DATABASE_URL:", settings.DATABASE_URL)
