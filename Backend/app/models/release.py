@@ -8,4 +8,4 @@ class Release(Base):
     discogs_id = Column(Integer, unique=True, index=True)
     title = Column(String, nullable=False)
     artist = Column(String, nullable=False)
-    style = Column(String, nullable=False)  # Adding style column as nullable since existing records won't have it
+    style = Column(String, nullable=False)
