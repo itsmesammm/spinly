@@ -6,6 +6,7 @@ from typing import List
 from app.services.database import get_db
 from app.models.collection import Collection
 from app.schemas.collection import CollectionCreate, CollectionResponse, CollectionUpdate
+from app.core.exceptions import NotFoundException
 
 router = APIRouter()
 
@@ -32,11 +33,8 @@ async def list_collections(db: AsyncSession = Depends(get_db)):
 async def get_collection(collection_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Collection).where(Collection.id == collection_id))
     collection = result.scalar_one_or_none()
-    if not collection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Collection not found"
-        )
+    if collection is None:
+        raise NotFoundException("Collection", collection_id)
     return collection
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
@@ -52,11 +50,8 @@ async def update_collection(collection_id: str, collection_data: CollectionUpdat
     # Get existing collection
     result = await db.execute(select(Collection).where(Collection.id == collection_id))
     collection = result.scalar_one_or_none()
-    if not collection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Collection not found"
-        )
+    if collection is None:
+        raise NotFoundException("Collection", collection_id)
     
     # Update name if provided
     if collection_data.name:

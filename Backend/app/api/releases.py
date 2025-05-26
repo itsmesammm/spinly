@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
 from app.services.discogs_manager import get_or_create_release
 from app.schemas.release import ReleaseResponse, ReleaseCreate
+from app.core.exceptions import NotFoundException, DuplicateError
 from typing import List
 from sqlalchemy.future import select
 from app.models.release import Release
@@ -14,14 +15,18 @@ router = APIRouter()
 async def read_release(release_id: int, db: AsyncSession = Depends(get_db)):
     release = await get_or_create_release(release_id, db)
     if not release:
-        raise HTTPException(status_code=404, detail="Release not found")
-    return release # FastAPI will use ReleaseResponse to serialize this
+        raise NotFoundException("Release", str(release_id))
+    return release
 
 @router.post("/releases/", response_model=ReleaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_release(release_data: ReleaseCreate, db: AsyncSession = Depends(get_db)):
-    # You would typically have a service function for creating releases
-    # For simplicity, let's just create it directly here as an example
-    new_release_db_obj = Release(**release_data.dict()) # Convert Pydantic to SQLAlchemy model
+    # Check for duplicate release
+    existing_release = await db.get(Release, release_data.id)
+    if existing_release:
+        raise DuplicateError("Release", str(release_data.id))
+
+    # Create the release
+    new_release_db_obj = Release(**release_data.dict())
     db.add(new_release_db_obj)
     await db.commit()
     await db.refresh(new_release_db_obj)
