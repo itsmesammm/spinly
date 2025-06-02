@@ -4,9 +4,10 @@ from app.services.database import get_db
 from app.services.discogs_manager import get_or_create_release
 from app.schemas.release import ReleaseResponse, ReleaseCreate
 from app.core.exceptions import NotFoundException, DuplicateError
-from typing import List
+from typing import List, Dict
 from sqlalchemy.future import select
 from app.models.release import Release
+from app.services.discogs import DiscogsService
 
 
 router = APIRouter()
@@ -34,6 +35,15 @@ async def create_release(release_data: ReleaseCreate, db: AsyncSession = Depends
 
 @router.get("/releases/", response_model=List[ReleaseResponse])
 async def list_releases(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Release)) # Assuming Release is imported from app.models.release
+    result = await db.execute(select(Release))
     releases = result.scalars().all()
     return releases
+
+@router.get("/releases/search/")
+async def search_releases(
+    query: str,
+    page: int = 1,
+    discogs_service: DiscogsService = Depends(DiscogsService)
+) -> Dict:
+    """Search for releases in Discogs database"""
+    return await discogs_service.search_releases(query, page)

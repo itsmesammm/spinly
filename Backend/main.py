@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import releases, users, collections
 
+
 # Create the app instance
 app = FastAPI(title="Spinly API")
 

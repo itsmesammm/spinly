@@ -17,7 +17,10 @@ async def get_or_create_release(release_id: int, db: AsyncSession):
     new_release = Release(
         discogs_id=release_id,
         title=data.get("title", "Unknown Title"),
-        artist=data["artists"][0]["name"] if data.get("artists") else "Unknown Artist"
+        artist=data["artists"][0]["name"] if data.get("artists") else "Unknown Artist",
+        styles=data.get("styles", []),
+        year=data.get("year"),
+        label=data.get("label")
     )
 
     db.add(new_release)
