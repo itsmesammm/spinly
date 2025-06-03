@@ -1,6 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
-from uuid import UUID
 
 class ReleaseBase(BaseModel):
     title: str
@@ -13,8 +12,7 @@ class ReleaseCreate(ReleaseBase):
     discogs_id: Optional[int] = None  # Optional for creation, as it might be fetched later
 
 class ReleaseResponse(ReleaseBase):
-    id: UUID
+    id: int  # Changed from UUID to int to match the database model
     discogs_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True  # Allows Pydantic to convert SQLAlchemy models to JSON
+    
+    model_config = ConfigDict(from_attributes=True)  # Updated Config syntax for Pydantic v2

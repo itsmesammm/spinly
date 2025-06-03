@@ -9,6 +9,6 @@ class Release(Base):
     discogs_id = Column(Integer, unique=True, index=True)
     title = Column(String, nullable=False)
     artist = Column(String, nullable=False)
-    styles = Column(PGARRAY(String), nullable=False, default=[]) 
+    styles = Column(PGARRAY(String), nullable=False, default=[])
     year = Column(Integer)
     label = Column(String)
