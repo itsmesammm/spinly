@@ -9,6 +9,8 @@ from typing import List, Dict
 from sqlalchemy.future import select
 from app.models.release import Release
 from app.services.discogs import DiscogsService, get_discogs_service
+from app.services import music_data_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +36,15 @@ async def list_releases(db: AsyncSession = Depends(get_db)) -> List[ReleaseRespo
 
 # Dynamic routes after static ones
 @router.get("/releases/{release_id}", response_model=ReleaseResponse)
-async def read_release(release_id: int, db: AsyncSession = Depends(get_db)) -> ReleaseResponse:
+async def read_release(
+    release_id: int,
+    db: AsyncSession = Depends(get_db),
+    discogs_service: DiscogsService = Depends(get_discogs_service) # Add Discogs service dependency
+) -> ReleaseResponse:
     """Get a specific release by its Discogs ID"""
     try:
         logger.info(f"Fetching release with ID {release_id}")
-        release = await get_or_create_release(release_id, db)
+        release = await music_data_service.get_or_create_release_with_tracks(release_id, db, discogs_service)
         if not release:
             logger.warning(f"Release with ID {release_id} not found")
             raise NotFoundException("Release", str(release_id))

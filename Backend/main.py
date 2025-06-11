@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.api import releases, users, collections, similarity
+from app.api import releases, users, collections, recommendations
 import traceback
 import logging
 
@@ -39,7 +39,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(collections.router, prefix="/api", tags=["collections"])
 app.include_router(releases.router, prefix="/api", tags=["releases"])
-app.include_router(similarity.router, prefix="/api", tags=["similarity"])
+app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
+
 
 @app.get("/")
 async def root():
