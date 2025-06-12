@@ -12,7 +12,7 @@ from app.schemas.release import ReleaseResponse # For the old endpoint
 from app.core.exceptions import NotFoundException
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["Recommendations"]) # Combined tag
+router = APIRouter(tags=["Recommendations"]) # Prefix is handled in main.py
 
 @router.get("/recommendations/from-track", response_model=RecommendationResponse)
 async def get_recommendations_from_track_endpoint(

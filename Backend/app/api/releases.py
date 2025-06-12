@@ -2,7 +2,6 @@ import logging
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.database import get_db
-from app.services.discogs_manager import get_or_create_release
 from app.schemas.release import ReleaseResponse, ReleaseCreate
 from app.core.exceptions import NotFoundException, DuplicateError
 from typing import List, Dict

@@ -4,6 +4,14 @@ from fastapi.responses import JSONResponse
 from app.api import releases, users, collections, recommendations
 import traceback
 import logging
+import uvicorn # For running programmatically
+from dotenv import load_dotenv # For loading .env file
+import os # For path manipulation
+
+# Explicitly load .env file from the project root (one directory up from Backend/)
+# This ensures .env is found whether running from root or Backend/ directly.
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(project_root, ".env"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,3 +53,11 @@ app.include_router(recommendations.router, prefix="/api", tags=["Recommendations
 @app.get("/")
 async def root():
     return {"message": "Welcome to Spinly API"}
+
+
+if __name__ == "__main__":
+    # This block runs when the script is executed directly (e.g., python Backend/main.py or by clicking 'Run' in an IDE)
+    # It will use the host and port defaults for uvicorn (127.0.0.1:8000)
+    # The --reload flag is not used here as IDEs often handle reloading separately.
+    # If you need reload when running this way, you can add reload=True to uvicorn.run()
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")

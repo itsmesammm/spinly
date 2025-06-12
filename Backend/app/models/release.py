@@ -8,20 +8,14 @@ class Release(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     discogs_id = Column(Integer, unique=True, index=True, nullable=False)
-    title = Column(String, nullable=False) 
+    title = Column(String, nullable=False)
     year = Column(Integer)
     label = Column(String)
-    styles = Column(PGARRAY(String), nullable=True, default=[])   
+    styles = Column(PGARRAY(String), nullable=True, default=[])
 
     # A release is linked to one primary artist
     artist_id = Column(Integer, ForeignKey("artists.id"), nullable=True)
     artist = relationship("Artist", back_populates="releases")
-
-    # A release has many tracks
-    tracks = relationship("Track", back_populates="release", cascade="all, delete-orphan") 
-
-
-
-
-
     
+    # A release has many tracks
+    tracks = relationship("Track", back_populates="release", cascade="all, delete-orphan")

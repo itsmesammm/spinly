@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.services.database import Base
-from app.models.track_artist import track_artist_association
+from app.models.track_artist import track_artist
 
 class Track(Base):
     __tablename__ = "tracks"
@@ -19,6 +19,6 @@ class Track(Base):
     # A track can have many artists (many-to-many relationship)
     artists = relationship(
         "Artist", 
-        secondary=track_artist_association, 
+        secondary=track_artist, 
         back_populates="tracks"
     )
