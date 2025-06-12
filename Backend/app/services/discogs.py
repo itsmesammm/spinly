@@ -52,6 +52,7 @@ class DiscogsService:
             "q": query,
             "type": "release",
             "page": page
+            "per_page": per_page
         }
         async with httpx.AsyncClient() as client:
             response = await client.get(
