@@ -138,14 +138,14 @@ async def get_track_recommendations(
         if not primary_style_for_search:
             logger.warning("DISCOGS SEARCH: Base release has no styles. Skipping Discogs style-based search.")
         else:
-            # Added type:release to be more specific, as Discogs can return master releases etc.
-            discogs_query = f'style:"{primary_style_for_search}" genre:"Electronic" type:"release"'
+            # The 'type:"release"' is handled by the discogs_service.search_releases method directly.
+            discogs_query = f'style:"{primary_style_for_search}" genre:"Electronic"'
             logger.info(f"DISCOGS SEARCH: Querying with: {discogs_query}")
             try:
-                # Fetching more results (e.g., 2 pages, ~50 items) to have a good pool for similarity scoring
-                # Discogs default per_page is 50, but let's be explicit if we want fewer for testing or more later.
-                discogs_search_page_1 = await discogs_service.search_releases(query=discogs_query, page=1, per_page=25)
-                discogs_search_page_2 = await discogs_service.search_releases(query=discogs_query, page=2, per_page=25)
+                # Fetching more results. Discogs default per_page is 50.
+                # We'll request two pages to get up to 100 candidates.
+                discogs_search_page_1 = await discogs_service.search_releases(query=discogs_query, page=1, per_page=50)
+                discogs_search_page_2 = await discogs_service.search_releases(query=discogs_query, page=2, per_page=50)
                 
                 potential_discogs_candidates = []
                 if discogs_search_page_1 and discogs_search_page_1.get("results"):

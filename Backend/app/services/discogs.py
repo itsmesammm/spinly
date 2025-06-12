@@ -45,23 +45,39 @@ class DiscogsService:
             logger.error(f"Unexpected error occurred in DiscogsService: {e}")
             raise
 
-    async def search_releases(self, query: str, page: int = 1) -> Dict[str, Any]:
+    async def search_releases(self, query: str, page: int = 1, per_page: int = 50) -> Dict[str, Any]:
         """Search releases on Discogs"""
         search_params = {
             **self.params,
             "q": query,
             "type": "release",
-            "page": page
-            "per_page": per_page
+            "page": page,
+            # Only include per_page if it's not the default 50
         }
+        if per_page != 50:
+            search_params["per_page"] = per_page
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/database/search",
-                params=search_params,
-                headers=self.headers
-            )
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.get(
+                    f"{self.base_url}/database/search",
+                    params=search_params,
+                    headers=self.headers
+                )
+                # Log rate limit headers regardless of status
+                logger.info(f"Discogs API Response Headers for query '{query}', page {page}:")
+                logger.info(f"  X-Discogs-Ratelimit: {response.headers.get('X-Discogs-Ratelimit')}")
+                logger.info(f"  X-Discogs-Ratelimit-Used: {response.headers.get('X-Discogs-Ratelimit-Used')}")
+                logger.info(f"  X-Discogs-Ratelimit-Remaining: {response.headers.get('X-Discogs-Ratelimit-Remaining')}")
+
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.warning(f"Discogs API returned 404 for query '{query}', page {page}. Assuming no more results. URL: {e.request.url}")
+                    return {}
+                logger.error(f"Discogs API HTTP error for query '{query}', page {page}: {e} URL: {e.request.url}")
+                raise # Re-raise other HTTP errors
 
 # Dependency
 async def get_discogs_service() -> DiscogsService:
