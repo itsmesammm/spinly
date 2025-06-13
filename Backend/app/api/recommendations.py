@@ -28,8 +28,18 @@ async def get_recommendations_from_track_endpoint(
             db=db, discogs_service=discogs_service, track_title=track_title,
             artist_name=artist_name, limit=limit_similar_releases
         )
-        track_titles = [track.title for track in similar_tracks if track.title]
-        return RecommendationResponse(recommendations=TrackRecommendationResponse(tracks=track_titles))
+        formatted_tracks = []
+        for track in similar_tracks:
+            artist_name_str = "Unknown Artist"  # Default
+            # First, try to get artist(s) linked directly to the track
+            if track.artists:
+                artist_name_str = ', '.join(sorted([artist.name for artist in track.artists]))
+            # If not, fall back to the main artist of the release
+            elif track.release and track.release.artist:
+                artist_name_str = track.release.artist.name
+            
+            formatted_tracks.append(f"{track.title} - {artist_name_str}")
+        return RecommendationResponse(recommendations=TrackRecommendationResponse(tracks=formatted_tracks))
     except NotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

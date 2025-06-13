@@ -9,7 +9,6 @@ class Track(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     position = Column(String, nullable=True)
-    duration = Column(String, nullable=True)
     youtube_url = Column(String, nullable=True)
 
     # Link to its parent release

@@ -71,7 +71,9 @@ class DiscogsService:
                 logger.info(f"  X-Discogs-Ratelimit-Remaining: {response.headers.get('X-Discogs-Ratelimit-Remaining')}")
 
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+                logger.info(f"Discogs API Pagination for query '{query}', page {page}: {data.get('pagination')}")
+                return data
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
                     logger.warning(f"Discogs API returned 404 for query '{query}', page {page}. Assuming no more results. URL: {e.request.url}")

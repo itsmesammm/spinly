@@ -5,7 +5,6 @@ from .artist import ArtistResponse # To represent artists associated with a trac
 class TrackBase(BaseModel):
     title: str
     position: Optional[str] = None
-    duration: Optional[str] = None
     youtube_url: Optional[str] = None
 
 class TrackCreate(TrackBase):

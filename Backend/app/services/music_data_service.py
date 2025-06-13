@@ -39,6 +39,16 @@ async def get_or_create_artist(discogs_artist: dict, db: AsyncSession) -> Artist
     return new_artist
 
 
+async def get_all_releases_with_details(db: AsyncSession) -> list[Release]:
+    """Fetches all releases from the DB, eager-loading their tracks and artists."""
+    stmt = select(Release).options(
+        selectinload(Release.tracks).selectinload(Track.artists),
+        selectinload(Release.artist)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().unique().all()
+
+
 async def get_or_create_release_with_tracks(
     discogs_release_id: int,
     db: AsyncSession,
@@ -90,19 +100,20 @@ async def get_or_create_release_with_tracks(
                     new_track = Track(
                         title=track_item.get("title"),
                         position=track_item.get("position"),
-                        duration=track_item.get("duration"),
                         release_id=new_release.id
                     )
                     # Link artists to the track
                     if track_item.get("artists"):
                         for track_artist_data in track_item["artists"]:
                             track_artist_obj = await get_or_create_artist(track_artist_data, db)
-                            new_track.artists.append(track_artist_obj)
+                            if track_artist_obj: # Ensure artist was found/created
+                                new_track.artists.append(track_artist_obj)
+                    elif main_artist_obj: # If no track-specific artists, link the main release artist
+                        new_track.artists.append(main_artist_obj)
                     db.add(new_track)
 
         await db.commit()
-        await db.refresh(new_release)
-        logger.info(f"Saved new release to database with id={new_release.id}")
+        logger.info(f"Saved new release to database: ID={new_release.id}, Title='{new_release.title}'")
         return new_release
 
     except Exception as e:
