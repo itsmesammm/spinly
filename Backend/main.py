@@ -16,6 +16,7 @@ load_dotenv(os.path.join(project_root, ".env"))
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 # Create the app instance with debug mode enabled
 app = FastAPI(title="Spinly API", debug=True)

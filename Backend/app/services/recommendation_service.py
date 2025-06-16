@@ -12,13 +12,28 @@ from app.core.exceptions import NotFoundException
 
 logger = logging.getLogger(__name__)
 
+# --- Recommendation Service Constants ---
+# For Discogs search when finding *similar* releases (not the base release)
+DISCOGS_SIMILAR_SEARCH_PAGES = 2
+DISCOGS_SIMILAR_SEARCH_PER_PAGE = 50 # Discogs default is 50, max 100
+
+# Minimum similarity score for a release to be considered a candidate for recommendations
+MIN_SCORE_FOR_CANDIDACY = 0.4
+
+# Default number of releases to fetch tracks from if not specified by the caller
+DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION = 10
+
+# Weightings for similarity calculation (can be tuned)
+WEIGHT_STYLE = 4.0
+WEIGHT_LABEL = 2.0
+WEIGHT_YEAR = 1.0
+WEIGHT_ARTIST = 3.0
+
 async def calculate_release_similarity(base_release: Release, target_release: Release) -> float:
     """Calculates a similarity score between two releases using weighted factors and Jaccard similarity for styles."""
+    """Calculates a similarity score between two releases using weighted factors and Jaccard similarity for styles."""
     score = 0.0
-    WEIGHT_STYLE = 4.0  # Normalized, so can be weighted higher
-    WEIGHT_LABEL = 2.0
-    WEIGHT_YEAR = 1.0
-    WEIGHT_ARTIST = 3.0
+    # Constants for weights are now defined at the module level for easier tuning.
 
     # 1. Artist
     if base_release.artist_id and target_release.artist_id and \
@@ -98,82 +113,120 @@ async def get_track_recommendations(
     discogs_service: DiscogsService,
     track_title: str,
     artist_name: str | None,
-    limit: int = 10 # Default to 10 releases for track collection
+    limit: int = DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION
 ) -> List[Track]:
-    """Generates track recommendations based on a seed track, prioritizing local DB then Discogs."""
+    """Generates track recommendations based on a seed track.
+    Prioritizes Discogs for discovering similar releases, then enriches with local DB data."""
     logger.info(f"RECOMMENDATION PIPELINE for '{track_title}' by '{artist_name}': START")
+
+    # STEP 1: Identify and fetch base release (unchanged)
+    logger.info("STEP 1.1: Identifying Discogs ID for base release.")
+    try:
+        base_release_discogs_id = await find_base_release_discogs_id_for_track(
+            track_title, artist_name, discogs_service
+        )
+    except NotFoundException:
+        logger.warning(f"Could not find base release on Discogs for '{track_title}'. Aborting.")
+        return []
     
-    # STEP 1: Base Release Identification
-    logger.info("Step 1.1: Identifying Discogs ID for base release.")
-    base_release_discogs_id = await find_base_release_discogs_id_for_track(track_title, artist_name, discogs_service)
-    logger.info(f"Step 1.2: Getting/creating base release (Discogs ID: {base_release_discogs_id}) in local DB.")
-    base_release = await get_or_create_release_with_tracks(discogs_release_id=base_release_discogs_id, db=db, discogs_service=discogs_service)
+    logger.info(f"STEP 1.2: Getting/creating base release (Discogs ID: {base_release_discogs_id}) in local DB.")
+    base_release = await get_or_create_release_with_tracks(base_release_discogs_id, db, discogs_service)
     if not base_release:
-        logger.error("Failed to get or create the base release. Cannot continue.")
-        raise Exception("Base release processing failed.")
-    logger.info(f"Base release: '{base_release.title}' (Local ID: {base_release.id}, Styles: {base_release.styles})")
+        logger.error(f"Failed to get or create base_release with Discogs ID {base_release_discogs_id}. Aborting.")
+        return []
+    logger.info(f"  Base release: '{base_release.title}' (Local ID: {base_release.id}, Styles: {base_release.styles})")
 
-    # STEP 2: Local DB Search
-    min_score_threshold = 0.6  # Standard threshold for local DB search
-    MIN_SIMILARITY_FOR_DISCOGS_RESULTS = 0.6  # Threshold for filtering Discogs results after fetching
-    all_candidate_releases_with_scores = await find_similar_releases_in_db(base_release, db, min_score_threshold)
+    # --- Candidate Collection --- 
+    # Using a dictionary keyed by local release.id to automatically handle de-duplication.
+    # Stores (Release, score) tuples.
+    all_candidates_map: dict[int, Tuple[Release, float]] = {}
 
-    # STEP 3: Discogs Search (if needed)
-    if len(all_candidate_releases_with_scores) < limit:
-        needed_from_discogs = limit - len(all_candidate_releases_with_scores)
-        logger.info(f"DISCOGS SEARCH: Local DB yielded {len(all_candidate_releases_with_scores)} candidates. Need {needed_from_discogs} more. Querying Discogs.")
-        
-        primary_style_for_search = base_release.styles[0] if base_release.styles else None
-        if not primary_style_for_search:
-            logger.warning("DISCOGS SEARCH: Base release has no styles. Skipping Discogs style-based search.")
-        else:
-            discogs_query = f'style:"{primary_style_for_search}" genre:"Electronic"'
-            logger.info(f"DISCOGS SEARCH: Querying with: {discogs_query}")
+    # STEP 2: Discogs Search for Similar Releases (Primary Source)
+    logger.info("STEP 2: Querying Discogs for similar releases based on base release style(s).")
+    if base_release.styles:
+        primary_style_for_search = base_release.styles[0]
+        # Consider making the query more dynamic or using multiple styles in the future.
+        discogs_query = f'style:"{primary_style_for_search}" genre:"Electronic"'
+        logger.info(f"  Discogs query: {discogs_query}")
+
+        raw_discogs_search_results = []
+        for page_num in range(1, DISCOGS_SIMILAR_SEARCH_PAGES + 1):
             try:
-                potential_discogs_candidates = []
-                discogs_search_page_1 = await discogs_service.search_releases(query=discogs_query, page=1, per_page=50)
-                if discogs_search_page_1 and discogs_search_page_1.get("results"):
-                    potential_discogs_candidates.extend(discogs_search_page_1["results"])
-                    pagination_info = discogs_search_page_1.get("pagination", {})
-                    total_pages = pagination_info.get("pages", 1)
-                    if total_pages > 1:
-                        discogs_search_page_2 = await discogs_service.search_releases(query=discogs_query, page=2, per_page=50)
-                        if discogs_search_page_2 and discogs_search_page_2.get("results"):
-                            potential_discogs_candidates.extend(discogs_search_page_2["results"])
-
-                logger.info(f"DISCOGS SEARCH: Got {len(potential_discogs_candidates)} potential candidates from Discogs search.")
-                discogs_sourced_count = 0
-                for potential_release_data in potential_discogs_candidates:
-                    if len(all_candidate_releases_with_scores) >= limit:
-                        break
-                    potential_discogs_id = potential_release_data.get("id")
-                    if not potential_discogs_id or any(r.discogs_id == potential_discogs_id for r, s in all_candidate_releases_with_scores):
-                        continue
-                    
-                    new_discogs_release = await get_or_create_release_with_tracks(potential_discogs_id, db, discogs_service)
-                    if new_discogs_release:
-                        score = await calculate_release_similarity(base_release, new_discogs_release)
-                        if score >= MIN_SIMILARITY_FOR_DISCOGS_RESULTS:
-                            all_candidate_releases_with_scores.append((new_discogs_release, score))
-                            discogs_sourced_count += 1
-                logger.info(f"DISCOGS SEARCH: Added {discogs_sourced_count} new releases from Discogs.")
+                search_page_data = await discogs_service.search_releases(
+                    query=discogs_query, page=page_num, per_page=DISCOGS_SIMILAR_SEARCH_PER_PAGE
+                )
+                if search_page_data and search_page_data.get("results"):
+                    raw_discogs_search_results.extend(search_page_data["results"])
+                # Stop if no more pages indicated by Discogs
+                if not (search_page_data and search_page_data.get("pagination", {}).get("urls", {}).get("next")):
+                    break
             except Exception as e:
-                logger.error(f"DISCOGS SEARCH: Error during Discogs search or processing: {e}", exc_info=True)
+                logger.error(f"  Error fetching page {page_num} from Discogs: {e}", exc_info=False)
+                break # Stop trying if a page fetch fails
+        
+        logger.info(f"  Found {len(raw_discogs_search_results)} raw candidate items from Discogs style search.")
+
+        for raw_release_data in raw_discogs_search_results:
+            discogs_id = raw_release_data.get("id")
+            if not discogs_id or discogs_id == base_release.discogs_id:
+                continue # Skip self or items without ID
+
+            try:
+                # This ensures the release is in our DB and details are loaded for scoring.
+                release_obj = await get_or_create_release_with_tracks(discogs_id, db, discogs_service)
+                if release_obj and release_obj.id not in all_candidates_map: # Check if already processed (e.g., from local DB first if order changed)
+                    score = await calculate_release_similarity(base_release, release_obj)
+                    if score >= MIN_SCORE_FOR_CANDIDACY:
+                        all_candidates_map[release_obj.id] = (release_obj, score)
+                        logger.debug(f"    Added Discogs candidate '{release_obj.title}' (Local ID: {release_obj.id}), Score: {score:.2f}")
+            except Exception as e:
+                logger.warning(f"    Error processing Discogs candidate ID {discogs_id} (e.g. release details fetch failed): {e}", exc_info=False)
     else:
-        logger.info("DISCOGS SEARCH: Not needed. Local DB provided enough candidates.")
+        logger.warning("  Base release has no styles. Skipping Discogs style-based search for similar releases.")
 
-    # STEP 4: Sort and Limit
-    all_candidate_releases_with_scores.sort(key=lambda item: item[1], reverse=True)
-    logger.info(f"FINAL SORT: Total {len(all_candidate_releases_with_scores)} candidates sorted.")
-    top_releases_with_scores = all_candidate_releases_with_scores[:limit]
+    # STEP 3: Local DB Search for Additional/Enriching Similar Releases
+    logger.info("STEP 3: Searching local DB for additional/enriching similar releases.")
+    # find_similar_releases_in_db returns List[Tuple[Release, float]] already scored and filtered by its threshold.
+    # We pass MIN_SCORE_FOR_CANDIDACY to ensure consistent filtering.
+    local_db_candidates = await find_similar_releases_in_db(base_release, db, min_score_threshold=MIN_SCORE_FOR_CANDIDACY)
+    
+    logger.info(f"  Found {len(local_db_candidates)} candidates from local DB with score >= {MIN_SCORE_FOR_CANDIDACY}.")
+    for rel_obj, score in local_db_candidates:
+        if rel_obj.id not in all_candidates_map: # Add if not already present from Discogs search
+            all_candidates_map[rel_obj.id] = (rel_obj, score)
+            logger.debug(f"    Added Local DB candidate '{rel_obj.title}' (Local ID: {rel_obj.id}), Score: {score:.2f}")
+        # If already present, the one from Discogs (potentially fresher) or first one encountered is kept.
+        # Current map logic will keep the first one encountered if IDs are the same.
 
-    # STEP 5: Collect Tracks
+    # STEP 4: Consolidate, Sort, and Limit Final Candidates
+    logger.info("STEP 4: Consolidating, sorting, and limiting final candidates.")
+    consolidated_candidates_with_scores = list(all_candidates_map.values())
+    
+    # Sort all collected candidates by score
+    consolidated_candidates_with_scores.sort(key=lambda item: item[1], reverse=True)
+    
+    # Limit to the number of releases requested for track collection
+    top_releases_with_scores = consolidated_candidates_with_scores[:limit]
+    logger.info(f"  Selected top {len(top_releases_with_scores)} releases from {len(consolidated_candidates_with_scores)} candidates (limit: {limit}).")
+
+    # STEP 5: Collect Tracks (Unchanged from current logic)
     recommended_tracks: List[Track] = []
-    logger.info(f"TRACK COLLECTION: Collecting tracks from top {len(top_releases_with_scores)} releases.")
+    logger.info(f"STEP 5: Collecting tracks from top {len(top_releases_with_scores)} releases.")
     for rel_obj, score in top_releases_with_scores:
         if not rel_obj.tracks:
-            logger.warning(f"Release '{rel_obj.title}' (ID: {rel_obj.id}) has no tracks loaded.")
+            # This might happen if tracks weren't loaded, e.g., if get_or_create_release_with_tracks had an issue
+            # or if the release genuinely has no tracks listed on Discogs.
+            logger.warning(f"  Release '{rel_obj.title}' (ID: {rel_obj.id}) has no tracks loaded or available. Skipping.")
+            # Attempt to reload tracks if they are missing and should be there
+            # stmt = select(Release).where(Release.id == rel_obj.id).options(selectinload(Release.tracks).selectinload(Track.artists), selectinload(Release.artist))
+            # fresh_rel_obj_result = await db.execute(stmt)
+            # fresh_rel_obj = fresh_rel_obj_result.scalar_one_or_none()
+            # if fresh_rel_obj and fresh_rel_obj.tracks:
+            #    rel_obj = fresh_rel_obj # Use the freshly loaded object
+            # else:
+            #    continue # Still no tracks, skip
             continue
+
         logger.debug(f"  Adding {len(rel_obj.tracks)} tracks from '{rel_obj.title}' (Score: {score:.2f}, DB ID: {rel_obj.id}, Discogs ID: {rel_obj.discogs_id})")
         for track_to_add in rel_obj.tracks:
             recommended_tracks.append(track_to_add)
