@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 # --- Recommendation Service Constants ---
 # For Discogs search when finding *similar* releases (not the base release)
-DISCOGS_SIMILAR_SEARCH_PAGES = 2
+DISCOGS_SIMILAR_SEARCH_PAGES = 1
 DISCOGS_SIMILAR_SEARCH_PER_PAGE = 50 # Discogs default is 50, max 100
 
 # Minimum similarity score for a release to be considered a candidate for recommendations
-MIN_SCORE_FOR_CANDIDACY = 0.4
+MIN_SCORE_FOR_CANDIDACY = 0.6
 
 # Default number of releases to fetch tracks from if not specified by the caller
 DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION = 10
@@ -31,16 +32,9 @@ WEIGHT_ARTIST = 3.0
 
 async def calculate_release_similarity(base_release: Release, target_release: Release) -> float:
     """Calculates a similarity score between two releases using weighted factors and Jaccard similarity for styles."""
-    """Calculates a similarity score between two releases using weighted factors and Jaccard similarity for styles."""
     score = 0.0
-    # Constants for weights are now defined at the module level for easier tuning.
 
-    # 1. Artist
-    if base_release.artist_id and target_release.artist_id and \
-       base_release.artist_id == target_release.artist_id:
-        score += WEIGHT_ARTIST
-
-    # 2. Styles (Jaccard Similarity)
+    # 1. Styles (Jaccard Similarity)
     if base_release.styles and target_release.styles:
         base_styles_set = set(s.lower() for s in base_release.styles)
         target_styles_set = set(s.lower() for s in target_release.styles)
@@ -50,17 +44,22 @@ async def calculate_release_similarity(base_release: Release, target_release: Re
             jaccard_similarity = intersection / union
             score += jaccard_similarity * WEIGHT_STYLE
 
-    # 3. Label
+    # 2. Label
     if base_release.label and target_release.label and \
-       base_release.label.lower() == target_release.label.lower():
+    base_release.label.lower() == target_release.label.lower():
         score += WEIGHT_LABEL
 
-    # 4. Year
+    # 3. Year
     if base_release.year and target_release.year:
         year_diff = abs(base_release.year - target_release.year)
         # Score diminishes as the year difference increases. Capped at 10 years diff.
         year_score = max(0, 1 - (year_diff / 10.0))
         score += year_score * WEIGHT_YEAR
+
+    # 4. Artist
+    if base_release.artist_id and target_release.artist_id and \
+       base_release.artist_id == target_release.artist_id:
+        score += WEIGHT_ARTIST
 
     return score
 
@@ -143,16 +142,28 @@ async def get_track_recommendations(
 
     # STEP 2: Discogs Search for Similar Releases (Primary Source)
     logger.info("STEP 2: Querying Discogs for similar releases based on base release style(s).")
+    raw_discogs_search_results = []
     if base_release.styles:
-        primary_style_for_search = base_release.styles[0]
-        # Consider making the query more dynamic or using multiple styles in the future.
-        discogs_query = f'style:"{primary_style_for_search}" genre:"Electronic"'
+        # Use all styles from the base release for a more specific search
+        style_queries = [f'style:"{style}"' for style in base_release.styles]
+        
+        # Combine all style queries with a fallback genre
+        discogs_query = " ".join(style_queries) + ' genre:"Electronic"'
         logger.info(f"  Discogs query: {discogs_query}")
 
-        raw_discogs_search_results = []
         for page_num in range(1, DISCOGS_SIMILAR_SEARCH_PAGES + 1):
-            try:
-                search_page_data = await discogs_service.search_releases(
+        try:
+            search_page_data = await discogs_service.search_releases(
+                query=discogs_query, page=page_num, per_page=DISCOGS_SIMILAR_SEARCH_PER_PAGE
+            )
+            if search_page_data and search_page_data.get("results"):
+                raw_discogs_search_results.extend(search_page_data["results"])
+            # Stop if no more pages indicated by Discogs
+            if not (search_page_data and search_page_data.get("pagination", {}).get("urls", {}).get("next")):
+                break
+        except Exception as e:
+            logger.error(f"  Error fetching page {page_num} from Discogs: {e}", exc_info=False)
+            break # Stop trying if a page fetch fails
                     query=discogs_query, page=page_num, per_page=DISCOGS_SIMILAR_SEARCH_PER_PAGE
                 )
                 if search_page_data and search_page_data.get("results"):
@@ -181,6 +192,9 @@ async def get_track_recommendations(
                         logger.debug(f"    Added Discogs candidate '{release_obj.title}' (Local ID: {release_obj.id}), Score: {score:.2f}")
             except Exception as e:
                 logger.warning(f"    Error processing Discogs candidate ID {discogs_id} (e.g. release details fetch failed): {e}", exc_info=False)
+
+            # Add a delay to respect Discogs API rate limits (60/min -> ~1/sec)
+            await asyncio.sleep(1.1)
     else:
         logger.warning("  Base release has no styles. Skipping Discogs style-based search for similar releases.")
 
