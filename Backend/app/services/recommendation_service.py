@@ -29,6 +29,7 @@ WEIGHT_STYLE = 4.0
 WEIGHT_LABEL = 2.0
 WEIGHT_YEAR = 1.0
 WEIGHT_ARTIST = 3.0
+STYLE_COMPLETENESS_BONUS = 2.0 # Bonus for having all base styles
 
 async def calculate_release_similarity(base_release: Release, target_release: Release) -> float:
     """Calculates a similarity score between two releases using weighted factors and Jaccard similarity for styles."""
@@ -43,6 +44,10 @@ async def calculate_release_similarity(base_release: Release, target_release: Re
         if union > 0:
             jaccard_similarity = intersection / union
             score += jaccard_similarity * WEIGHT_STYLE
+
+            # Add a bonus if all base styles are present in the target
+            if base_styles_set.issubset(target_styles_set):
+                score += STYLE_COMPLETENESS_BONUS
 
     # 2. Label
     if base_release.label and target_release.label and \
@@ -93,8 +98,10 @@ async def find_similar_releases_in_db(base_release: Release, db: AsyncSession, m
 
     similar_db_releases_with_scores: List[Tuple[Release, float]] = []
     for target_release in all_db_releases:
-        if target_release.id == base_release.id: # Prevent self-comparison
+        # Exclude the base release itself from the comparison
+        if target_release.id == base_release.id:
             continue
+
 
         score = await calculate_release_similarity(base_release, target_release)
         if score > min_score_threshold: 
@@ -152,18 +159,8 @@ async def get_track_recommendations(
         logger.info(f"  Discogs query: {discogs_query}")
 
         for page_num in range(1, DISCOGS_SIMILAR_SEARCH_PAGES + 1):
-        try:
-            search_page_data = await discogs_service.search_releases(
-                query=discogs_query, page=page_num, per_page=DISCOGS_SIMILAR_SEARCH_PER_PAGE
-            )
-            if search_page_data and search_page_data.get("results"):
-                raw_discogs_search_results.extend(search_page_data["results"])
-            # Stop if no more pages indicated by Discogs
-            if not (search_page_data and search_page_data.get("pagination", {}).get("urls", {}).get("next")):
-                break
-        except Exception as e:
-            logger.error(f"  Error fetching page {page_num} from Discogs: {e}", exc_info=False)
-            break # Stop trying if a page fetch fails
+            try:
+                search_page_data = await discogs_service.search_releases(
                     query=discogs_query, page=page_num, per_page=DISCOGS_SIMILAR_SEARCH_PER_PAGE
                 )
                 if search_page_data and search_page_data.get("results"):
