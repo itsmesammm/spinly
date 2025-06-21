@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.services.database import Base
 from app.models.track_artist import track_artist
+from app.models.collection_track import collection_track
 
 class Track(Base):
     __tablename__ = "tracks"
@@ -19,5 +20,11 @@ class Track(Base):
     artists = relationship(
         "Artist", 
         secondary=track_artist, 
+        back_populates="tracks"
+    )
+
+    collections = relationship(
+        "Collection",
+        secondary=collection_track,
         back_populates="tracks"
     )

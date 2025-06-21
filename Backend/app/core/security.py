@@ -38,6 +38,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login/token")
 
+# Dependency for optional authentication, returns None if token is missing
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/login/token", auto_error=False)
+
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
     token: str = Depends(oauth2_scheme)
@@ -61,4 +64,25 @@ async def get_current_user(
     
     if user is None:
         raise credentials_exception
+    return user
+
+
+async def get_current_user_optional(
+    db: AsyncSession = Depends(get_db),
+    token: Optional[str] = Depends(oauth2_scheme_optional)
+) -> Optional[User]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str | None = payload.get("sub")
+        if username is None:
+            return None
+        token_data = TokenData(username=username)
+    except JWTError:
+        return None
+    
+    result = await db.execute(select(User).where(User.username == token_data.username))
+    user = result.scalar_one_or_none()
+    
     return user
