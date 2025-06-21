@@ -26,9 +26,9 @@ DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION = 10
 
 # Weightings for similarity calculation (can be tuned)
 WEIGHT_STYLE = 4.0
-WEIGHT_LABEL = 2.0
-WEIGHT_YEAR = 1.0
-WEIGHT_ARTIST = 3.0
+WEIGHT_LABEL = 2.5
+WEIGHT_YEAR = 2.5
+WEIGHT_ARTIST = 1.0
 STYLE_COMPLETENESS_BONUS = 2.0 # Bonus for having all base styles
 
 async def calculate_release_similarity(base_release: Release, target_release: Release) -> float:
@@ -154,8 +154,9 @@ async def get_track_recommendations(
         # Use all styles from the base release for a more specific search
         style_queries = [f'style:"{style}"' for style in base_release.styles]
         
-        # Combine all style queries with a fallback genre
-        discogs_query = " ".join(style_queries) + ' genre:"Electronic"'
+        # Combine all style queries for the search.
+        # NOTE: Genre is intentionally omitted as Postman tests showed it overly restricts results.
+        discogs_query = " ".join(style_queries)
         logger.info(f"  Discogs query: {discogs_query}")
 
         for page_num in range(1, DISCOGS_SIMILAR_SEARCH_PAGES + 1):
@@ -174,6 +175,12 @@ async def get_track_recommendations(
         
         logger.info(f"  Found {len(raw_discogs_search_results)} raw candidate items from Discogs style search.")
 
+        if raw_discogs_search_results:
+            logger.info("Raw candidates from Discogs (before local DB check/processing):")
+            for cand_data in raw_discogs_search_results:
+                logger.info(f"  - Title: {cand_data.get('title')}, Discogs ID: {cand_data.get('id')}, Styles: {cand_data.get('style')}, Year: {cand_data.get('year')}, Label: {cand_data.get('label')}")
+
+    # Process Discogs candidates: get/create them in local DB and calculate scores
         for raw_release_data in raw_discogs_search_results:
             discogs_id = raw_release_data.get("id")
             if not discogs_id or discogs_id == base_release.discogs_id:
@@ -182,7 +189,7 @@ async def get_track_recommendations(
             try:
                 # This ensures the release is in our DB and details are loaded for scoring.
                 release_obj = await get_or_create_release_with_tracks(discogs_id, db, discogs_service)
-                if release_obj and release_obj.id not in all_candidates_map: # Check if already processed (e.g., from local DB first if order changed)
+                if release_obj and release_obj.id not in all_candidates_map: # Check if already processed
                     score = await calculate_release_similarity(base_release, release_obj)
                     if score >= MIN_SCORE_FOR_CANDIDACY:
                         all_candidates_map[release_obj.id] = (release_obj, score)

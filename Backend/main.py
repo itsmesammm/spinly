@@ -1,17 +1,14 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.api import releases, users, collections, recommendations
+from app.api import releases, users, collections, recommendations, auth
 import traceback
 import logging
 import uvicorn # For running programmatically
 from dotenv import load_dotenv # For loading .env file
 import os # For path manipulation
 
-# Explicitly load .env file from the project root (one directory up from Backend/)
-# This ensures .env is found whether running from root or Backend/ directly.
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(project_root, ".env"))
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +46,7 @@ app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(collections.router, prefix="/api", tags=["collections"])
 app.include_router(releases.router, prefix="/api", tags=["releases"])
 app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
+app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 
 
 @app.get("/")
