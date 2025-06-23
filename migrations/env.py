@@ -2,10 +2,15 @@ from logging.config import fileConfig
 import sys
 import os
 
+
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+
+# Pydantic's Settings class will automatically load the .env file from the root directory
+# when the alembic command is run from there.
+
 
 # Add the project root directory to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
