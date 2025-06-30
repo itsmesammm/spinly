@@ -10,33 +10,41 @@ from app.services.discogs import DiscogsService
 
 logger = logging.getLogger(__name__)
 
-async def get_or_create_artist(discogs_artist: dict, db: AsyncSession) -> Artist:
-    """Finds an artist in the DB or creates them."""
-    # This is a simplified version, assuming Discogs provides a unique artist ID
-    discogs_id = discogs_artist.get("id")
-    artist = None
+async def get_or_create_artist(artist_data: dict, db: AsyncSession) -> Artist:
+    # Treat a discogs_id of 0 as None (NULL in the database)
+    discogs_id = artist_data.get("id") if artist_data.get("id") != 0 else None
+
+    # 1. Try to find by Discogs ID if it's a valid, non-zero ID
     if discogs_id:
-        result = await db.execute(select(Artist).where(Artist.discogs_id == discogs_id))
-        artist = result.scalars().first()
+        stmt = select(Artist).where(Artist.discogs_id == discogs_id)
+        result = await db.execute(stmt)
+        db_artist = result.scalar_one_or_none()
+        if db_artist:
+            logger.debug(f"Found existing artist in DB by discogs_id={discogs_id}: {db_artist.name}")
+            return db_artist
 
-    if not artist:
-        # Fallback to check by name if no ID or not found by ID
-        name = discogs_artist.get("name")
-        result = await db.execute(select(Artist).where(Artist.name == name))
-        artist = result.scalars().first()
+    # 2. If no valid Discogs ID or not found, try to find by name.
+    # This is crucial for artists with discogs_id=0 or for general data consistency.
+    stmt = select(Artist).where(Artist.name == artist_data.get("name"))
+    result = await db.execute(stmt)
+    db_artist = result.scalar_one_or_none()
 
-    if artist:
-        return artist
+    if db_artist:
+        logger.debug(f"Found existing artist in DB by name: {db_artist.name}")
+        # If we found an artist by name that was missing a discogs_id, update it.
+        if not db_artist.discogs_id and discogs_id:
+            logger.debug(f"Updating artist '{db_artist.name}' with new discogs_id={discogs_id}")
+            db_artist.discogs_id = discogs_id
+            # The session will be flushed/committed by the calling function.
+        return db_artist
 
-    # Create new artist if not found
-    new_artist = Artist(
-        name=discogs_artist.get("name"),
-        discogs_id=discogs_artist.get("id")
-    )
-    db.add(new_artist)
-    await db.flush()  # Use flush to get the ID before commit
-    await db.refresh(new_artist)
-    return new_artist
+    # 3. If not found by either, create a new artist.
+    logger.debug(f"Creating new artist: {artist_data.get('name')} with discogs_id={discogs_id}")
+    db_artist = Artist(name=artist_data.get("name"), discogs_id=discogs_id)
+    db.add(db_artist)
+    await db.flush()  # Use flush to get the ID before the transaction commits.
+    await db.refresh(db_artist)
+    return db_artist
 
 
 async def get_all_releases_with_details(db: AsyncSession) -> list[Release]:

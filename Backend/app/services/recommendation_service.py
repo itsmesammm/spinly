@@ -227,27 +227,28 @@ async def get_track_recommendations(
     top_releases_with_scores = consolidated_candidates_with_scores[:limit]
     logger.info(f"  Selected top {len(top_releases_with_scores)} releases from {len(consolidated_candidates_with_scores)} candidates (limit: {limit}).")
 
-    # STEP 5: Collect Tracks (Unchanged from current logic)
-    recommended_tracks: List[Track] = []
-    logger.info(f"STEP 5: Collecting tracks from top {len(top_releases_with_scores)} releases.")
-    for rel_obj, score in top_releases_with_scores:
-        if not rel_obj.tracks:
-            # This might happen if tracks weren't loaded, e.g., if get_or_create_release_with_tracks had an issue
-            # or if the release genuinely has no tracks listed on Discogs.
-            logger.warning(f"  Release '{rel_obj.title}' (ID: {rel_obj.id}) has no tracks loaded or available. Skipping.")
-            # Attempt to reload tracks if they are missing and should be there
-            # stmt = select(Release).where(Release.id == rel_obj.id).options(selectinload(Release.tracks).selectinload(Track.artists), selectinload(Release.artist))
-            # fresh_rel_obj_result = await db.execute(stmt)
-            # fresh_rel_obj = fresh_rel_obj_result.scalar_one_or_none()
-            # if fresh_rel_obj and fresh_rel_obj.tracks:
-            #    rel_obj = fresh_rel_obj # Use the freshly loaded object
-            # else:
-            #    continue # Still no tracks, skip
-            continue
+    # STEP 5: Collect and Eagerly Load Tracks from Final Releases
+    logger.info(f"STEP 5: Collecting and eagerly loading tracks from top {len(top_releases_with_scores)} releases.")
+    
+    if not top_releases_with_scores:
+        logger.info("  No top releases found, returning empty list of tracks.")
+        return []
 
-        logger.debug(f"  Adding {len(rel_obj.tracks)} tracks from '{rel_obj.title}' (Score: {score:.2f}, DB ID: {rel_obj.id}, Discogs ID: {rel_obj.discogs_id})")
-        for track_to_add in rel_obj.tracks:
-            recommended_tracks.append(track_to_add)
-            
+    top_release_ids = [rel.id for rel, score in top_releases_with_scores]
+    
+    # A single query to get all tracks from the top releases, with their artists and parent release loaded.
+    # This is crucial for the API response schema to work correctly without N+1 queries.
+    stmt = (
+        select(Track)
+        .where(Track.release_id.in_(top_release_ids))
+        .options(
+            selectinload(Track.artists), # Eagerly load the artists for each track
+            selectinload(Track.release)  # Eagerly load the parent release for each track
+        )
+    )
+    
+    result = await db.execute(stmt)
+    recommended_tracks = result.scalars().all()
+    
     logger.info(f"RECOMMENDATION PIPELINE: END. Collected {len(recommended_tracks)} tracks from {len(top_releases_with_scores)} releases.")
     return recommended_tracks
