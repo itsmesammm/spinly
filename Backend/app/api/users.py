@@ -59,7 +59,11 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
     return user
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
-async def update_user(user_id: str, user_data: UserUpdate, db: AsyncSession = Depends(get_db)):
+async def update_user(user_id: str, user_data: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Check for authorization
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this user")
+
     # Get existing user
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -99,7 +103,11 @@ async def update_user(user_id: str, user_data: UserUpdate, db: AsyncSession = De
     return user
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_user(user_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Check for authorization
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this user")
+
     # First get the user
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

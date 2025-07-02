@@ -1,6 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from .artist import ArtistResponse # To represent artists associated with a track
+
+# A new, minimal schema to represent release info without causing circular imports
+class ReleaseInfo(BaseModel):
+    id: int
+    discogs_id: Optional[int] = None
+    title: str
+    model_config = ConfigDict(from_attributes=True)
 
 class TrackBase(BaseModel):
     title: str
@@ -13,6 +20,6 @@ class TrackCreate(TrackBase):
 class TrackResponse(TrackBase):
     id: int
     artists: List[ArtistResponse] = [] # A track can have multiple artists
+    release: Optional[ReleaseInfo] = None # Add release info
 
-    class Config:
-        from_attributes = True # Pydantic V2 for orm_mode
+    model_config = ConfigDict(from_attributes=True)
