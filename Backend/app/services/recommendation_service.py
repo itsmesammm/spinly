@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
