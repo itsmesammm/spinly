@@ -105,6 +105,8 @@ async def get_or_create_release_with_tracks(
         if data.get("tracklist"):
             for track_item in data["tracklist"]:
                 if track_item.get("type_") == "track":
+                    if new_release.discogs_id == 3490219:
+                        logger.info(f"[DEBUG 3490219] Raw track data from Discogs: {track_item}")
                     new_track = Track(
                         title=track_item.get("title"),
                         position=track_item.get("position"),

@@ -150,8 +150,13 @@ async def get_track_recommendations(
     logger.info("STEP 2: Querying Discogs for similar releases based on base release style(s).")
     raw_discogs_search_results = []
     if base_release.styles:
-        # Use all styles from the base release for a more specific search
-        style_queries = [f'style:"{style}"' for style in base_release.styles]
+        # If a release has more than 3 styles, use only the first 3 to avoid an overly restrictive query.
+        styles_to_query = base_release.styles
+        if len(styles_to_query) > 3:
+            logger.info(f"  Release has {len(styles_to_query)} styles. Using the first 3 for the Discogs query.")
+            styles_to_query = styles_to_query[:3]
+
+        style_queries = [f'style:"{style}"' for style in styles_to_query]
         
         # Combine all style queries for the search.
         # NOTE: Genre is intentionally omitted as Postman tests showed it overly restricts results.
@@ -223,8 +228,8 @@ async def get_track_recommendations(
     consolidated_candidates_with_scores.sort(key=lambda item: item[1], reverse=True)
     
     # Limit to the number of releases requested for track collection
-    top_releases_with_scores = consolidated_candidates_with_scores[:limit]
-    logger.info(f"  Selected top {len(top_releases_with_scores)} releases from {len(consolidated_candidates_with_scores)} candidates (limit: {limit}).")
+    top_releases_with_scores = consolidated_candidates_with_scores
+    logger.info(f"  Using all {len(top_releases_with_scores)} sorted candidates for track extraction.")
 
     # STEP 5: Collect and Eagerly Load Tracks from Final Releases
     logger.info(f"STEP 5: Collecting and eagerly loading tracks from top {len(top_releases_with_scores)} releases.")
