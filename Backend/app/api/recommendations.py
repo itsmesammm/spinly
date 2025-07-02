@@ -15,18 +15,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Recommendations"]) # Prefix is handled in main.py
 
 @router.get("/recommendations/from-track", response_model=RecommendationResponse)
-async def get_recommendations_from_track_endpoint(
+async def get_recommendations_from_track(
     track_title: str = Query(...),
     artist_name: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     discogs_service: DiscogsService = Depends(get_discogs_service),
-    limit_similar_releases: int = Query(5)
 ):
     """Generates a list of recommended tracks based on an input track title."""
     try:
         similar_tracks = await recommendation_service.get_track_recommendations(
             db=db, discogs_service=discogs_service, track_title=track_title,
-            artist_name=artist_name, limit=limit_similar_releases
+            artist_name=artist_name
         )
 
         # Transform the full track objects into the simplified response model

@@ -118,8 +118,7 @@ async def get_track_recommendations(
     db: AsyncSession,
     discogs_service: DiscogsService,
     track_title: str,
-    artist_name: str | None,
-    limit: int = DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION
+    artist_name: Optional[str] = None,
 ) -> List[Track]:
     """Generates track recommendations based on a seed track.
     Prioritizes Discogs for discovering similar releases, then enriches with local DB data."""
