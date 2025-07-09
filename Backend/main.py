@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.api import releases, users, collections, recommendations, auth
+from app.api import releases, users, collections, recommendations, auth, jobs
 import traceback
 import logging
 import uvicorn # For running programmatically
@@ -47,6 +47,7 @@ app.include_router(collections.router, prefix="/api", tags=["collections"])
 app.include_router(releases.router, prefix="/api", tags=["releases"])
 app.include_router(recommendations.router, prefix="/api", tags=["Recommendations"])
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 
 
 @app.get("/")
