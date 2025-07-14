@@ -24,6 +24,9 @@ from app.models.artist import Artist
 from app.models.collection import Collection
 from app.models.release import Release
 from app.models.track import Track
+from app.models.background_job import BackgroundJob
+from app.models.track_artist import track_artist
+from app.models.collection_track import collection_track
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

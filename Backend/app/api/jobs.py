@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.services.job_service import JobService
 from app.schemas.background_job import Job
 from app.schemas.recommendations import RecommendationResponse, SimpleTrackRecommendation
-from app.dependencies import get_db
+from app.services.database import get_db
 from app.models.background_job import JobStatus
 from app.models.track import Track
 

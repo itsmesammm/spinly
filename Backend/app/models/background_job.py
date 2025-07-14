@@ -31,6 +31,7 @@ class BackgroundJob(Base):
 
     # Timestamps and performance tracking.
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
     started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
     duration_s: Mapped[float | None] = mapped_column(Float)

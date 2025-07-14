@@ -28,7 +28,7 @@ class JobInDBBase(JobBase):
     status: JobStatus
     result: Optional[Any] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     duration_s: Optional[float] = None
 

@@ -24,7 +24,7 @@ DISCOGS_SIMILAR_SEARCH_PAGES = 1
 DISCOGS_SIMILAR_SEARCH_PER_PAGE = 50 # Discogs default is 50, max 100
 
 # Minimum similarity score for a release to be considered a candidate for recommendations
-MIN_SCORE_FOR_CANDIDACY = 0.6
+MIN_SCORE_FOR_CANDIDACY = 0.7
 
 # Default number of releases to fetch tracks from if not specified by the caller
 DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION = 10
@@ -233,8 +233,8 @@ async def get_track_recommendations(
     consolidated_candidates_with_scores.sort(key=lambda item: item[1], reverse=True)
     
     # Limit to the number of releases requested for track collection
-    top_releases_with_scores = consolidated_candidates_with_scores
-    logger.info(f"  Using all {len(top_releases_with_scores)} sorted candidates for track extraction.")
+    top_releases_with_scores = consolidated_candidates_with_scores[:DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION]
+    logger.info(f"  Limiting to top {len(top_releases_with_scores)} of {len(consolidated_candidates_with_scores)} candidates for track extraction.")
 
     # STEP 5: Collect and Eagerly Load Tracks from Final Releases
     logger.info(f"STEP 5: Collecting and eagerly loading tracks from top {len(top_releases_with_scores)} releases.")
