@@ -5,8 +5,8 @@ from typing import List
 
 from app.services.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
-from app.core.security import get_password_hash, get_current_user
+from app.schemas.user import UserCreate, UserResponse, UserUpdate, UserPublicResponse, UserPasswordUpdate
+from app.core.security import get_password_hash, get_current_user, verify_password
 from app.core.exceptions import NotFoundException, DuplicateError
 
 router = APIRouter()
@@ -50,7 +50,7 @@ async def list_users(db: AsyncSession = Depends(get_db)):
     users = result.scalars().all()
     return users
 
-@router.get("/users/{user_id}", response_model=UserResponse)
+@router.get("/users/{user_id}", response_model=UserPublicResponse)
 async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -61,7 +61,7 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
 @router.patch("/users/{user_id}", response_model=UserResponse)
 async def update_user(user_id: str, user_data: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Check for authorization
-    if current_user.id != user_id:
+    if str(current_user.id) != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this user")
 
     # Get existing user
@@ -94,18 +94,43 @@ async def update_user(user_id: str, user_data: UserUpdate, db: AsyncSession = De
             raise DuplicateError("Email", user_data.email)
         user.email = user_data.email
     
-    # Update password if provided
-    if user_data.password:
-        user.password_hash = get_password_hash(user_data.password)
+
     
     await db.commit()
     await db.refresh(user)
     return user
 
-@router.delete("/users/{user_id}")
+
+@router.patch("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+async def update_user_password(
+    user_id: str,
+    password_data: UserPasswordUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Check for authorization: User can only change their own password
+    if str(current_user.id) != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user's password"
+        )
+
+    # Verify old password
+    if not verify_password(password_data.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect old password"
+        )
+
+    # Hash and set new password
+    current_user.password_hash = get_password_hash(password_data.new_password)
+    await db.commit()
+    
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Check for authorization
-    if current_user.id != user_id:
+    if str(current_user.id) != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this user")
 
     # First get the user
@@ -124,4 +149,4 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db), current_
     # Now delete the user
     await db.delete(user)
     await db.commit()
-    return {"message": "User and all associated collections deleted successfully"}
+    return  # Explicitly return None for clarity with 204 No Content
