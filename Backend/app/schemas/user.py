@@ -12,10 +12,23 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
-    password: Optional[str] = None  # Optional password update
+
+
+class UserPasswordUpdate(BaseModel):
+    old_password: str
+    new_password: str
 
 class UserResponse(UserBase):
     id: UUID
 
     class Config:
         from_attributes = True  # Allows Pydantic to convert SQLAlchemy models to JSON
+
+
+class UserPublicResponse(BaseModel):
+    """Schema for publicly available user information."""
+    id: UUID
+    username: str
+
+    class Config:
+        from_attributes = True

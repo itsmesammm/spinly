@@ -10,6 +10,11 @@ from app.models.track import Track
 from app.services.discogs import DiscogsService
 from app.services.music_data_service import get_or_create_release_with_tracks, get_all_releases_with_details
 from app.core.exceptions import NotFoundException
+from app.services.job_service import JobService
+from app.schemas.background_job import JobUpdate
+from app.models.background_job import JobStatus
+import uuid
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,7 @@ DISCOGS_SIMILAR_SEARCH_PAGES = 1
 DISCOGS_SIMILAR_SEARCH_PER_PAGE = 50 # Discogs default is 50, max 100
 
 # Minimum similarity score for a release to be considered a candidate for recommendations
-MIN_SCORE_FOR_CANDIDACY = 0.6
+MIN_SCORE_FOR_CANDIDACY = 0.7
 
 # Default number of releases to fetch tracks from if not specified by the caller
 DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION = 10
@@ -228,8 +233,8 @@ async def get_track_recommendations(
     consolidated_candidates_with_scores.sort(key=lambda item: item[1], reverse=True)
     
     # Limit to the number of releases requested for track collection
-    top_releases_with_scores = consolidated_candidates_with_scores
-    logger.info(f"  Using all {len(top_releases_with_scores)} sorted candidates for track extraction.")
+    top_releases_with_scores = consolidated_candidates_with_scores[:DEFAULT_LIMIT_RELEASES_FOR_TRACK_COLLECTION]
+    logger.info(f"  Limiting to top {len(top_releases_with_scores)} of {len(consolidated_candidates_with_scores)} candidates for track extraction.")
 
     # STEP 5: Collect and Eagerly Load Tracks from Final Releases
     logger.info(f"STEP 5: Collecting and eagerly loading tracks from top {len(top_releases_with_scores)} releases.")
@@ -256,3 +261,52 @@ async def get_track_recommendations(
     
     logger.info(f"RECOMMENDATION PIPELINE: END. Collected {len(recommended_tracks)} tracks from {len(top_releases_with_scores)} releases.")
     return recommended_tracks
+
+
+async def run_recommendation_pipeline_and_update_job(
+    job_id: uuid.UUID,
+    db: AsyncSession,
+    discogs_service: DiscogsService,
+    track_title: str,
+    artist_name: Optional[str],
+):
+    """Runs the full recommendation pipeline and updates the job status and result."""
+    job_service = JobService(db)
+    logger.info(f"[Job ID: {job_id}] Starting recommendation pipeline.")
+    start_time = time.time()
+
+    await job_service.update_job(job_id, JobUpdate(status=JobStatus.RUNNING))
+
+    try:
+        recommended_tracks = await get_track_recommendations(
+            db=db,
+            discogs_service=discogs_service,
+            track_title=track_title,
+            artist_name=artist_name,
+        )
+
+        track_ids = [track.id for track in recommended_tracks]
+        duration = time.time() - start_time
+        logger.info(f"[Job ID: {job_id}] Pipeline completed successfully in {duration:.2f}s. Found {len(track_ids)} tracks.")
+        
+        await job_service.update_job(
+            job_id,
+            JobUpdate(
+                status=JobStatus.COMPLETED,
+                result={"track_ids": track_ids},
+                duration_s=duration
+            )
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        error_message = f"An unexpected error occurred: {str(e)}"
+        logger.error(f"[Job ID: {job_id}] Pipeline failed after {duration:.2f}s. Error: {error_message}", exc_info=True)
+        await job_service.update_job(
+            job_id,
+            JobUpdate(
+                status=JobStatus.FAILED,
+                result={"error": error_message},
+                duration_s=duration
+            )
+        )

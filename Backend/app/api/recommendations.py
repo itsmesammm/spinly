@@ -1,52 +1,56 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
+# Use correct, existing paths for dependencies
 from app.services.database import get_db
-from app.services.discogs import DiscogsService, get_discogs_service
-from app.services import recommendation_service, music_data_service
-from app.schemas.recommendations import RecommendationResponse, SimpleTrackRecommendation
-from app.schemas.release import ReleaseResponse # For the old endpoint
-from app.core.exceptions import NotFoundException
+from app.services.discogs import get_discogs_service, DiscogsService
+from app.core.security import get_current_user_optional
+
+# Imports for background job logic
+from app.services import recommendation_service
+from app.services.job_service import JobService
+from app.schemas.background_job import Job, JobCreate
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Recommendations"]) # Prefix is handled in main.py
+router = APIRouter(tags=["Recommendations"])  # Prefix is handled in main.py
 
-@router.get("/recommendations/from-track", response_model=RecommendationResponse)
-async def get_recommendations_from_track(
+@router.post("/recommendations/request", response_model=Job, status_code=202)
+async def request_recommendations_from_track(
+    background_tasks: BackgroundTasks,
     track_title: str = Query(...),
     artist_name: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     discogs_service: DiscogsService = Depends(get_discogs_service),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
-    """Generates a list of recommended tracks based on an input track title."""
-    try:
-        similar_tracks = await recommendation_service.get_track_recommendations(
-            db=db, discogs_service=discogs_service, track_title=track_title,
-            artist_name=artist_name
-        )
+    """Accepts a recommendation request and starts a background job to process it."""
+    job_service = JobService(db)
 
-        # Transform the full track objects into the simplified response model
-        formatted_recommendations = [
-            SimpleTrackRecommendation(
-                track_id=track.id,
-                title=track.title,
-                artist_name=track.artists[0].name if track.artists else "Unknown Artist",
-                discogs_release_id=track.release.discogs_id if track.release else 0,
-            )
-            for track in similar_tracks
-        ]
+    job_create = JobCreate(
+        job_type="track_recommendation",
+        parameters={"track_title": track_title, "artist_name": artist_name},
+        user_id=current_user.id if current_user else None
+    )
+    job = await job_service.create_job(job_create)
 
-        return RecommendationResponse(recommendations=formatted_recommendations)
-    except NotFoundException as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to get recommendations: {e}")
-        raise HTTPException(status_code=500, detail="An internal error occurred.")
+    # Add the long-running task to FastAPI's background runner
+    background_tasks.add_task(
+        recommendation_service.run_recommendation_pipeline_and_update_job,
+        job_id=job.id,
+        db=db,
+        discogs_service=discogs_service,
+        track_title=track_title,
+        artist_name=artist_name
+    )
 
-@router.get("/releases/{release_id}/similar", response_model=List[ReleaseResponse])
+    logger.info(f"Created and dispatched background job {job.id} for track '{track_title}'.")
+    return job
+
+
+
 async def get_similar_releases_endpoint(
     release_id: int,
     db: AsyncSession = Depends(get_db),

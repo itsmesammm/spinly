@@ -12,6 +12,7 @@ from app.core.exceptions import NotFoundException
 from app.core.security import get_current_user, get_current_user_optional
 from app.models.user import User
 
+
 router = APIRouter()
 
 @router.post("/collections/", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
@@ -77,10 +78,13 @@ async def get_collection(collection_id: str, db: AsyncSession = Depends(get_db),
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
 async def get_user_collections(user_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Collection).where(Collection.user_id == user_id)
+    # Eagerly load tracks and their nested relationships to prevent lazy-loading errors.
+    query = select(Collection).where(Collection.user_id == user_id).options(
+        selectinload(Collection.tracks).selectinload(Track.artists),
+        selectinload(Collection.tracks).joinedload(Track.release)
     )
-    collections = result.scalars().all()
+    result = await db.execute(query)
+    collections = result.scalars().unique().all()
     return collections
 
 @router.patch("/collections/{collection_id}", response_model=CollectionResponse)
