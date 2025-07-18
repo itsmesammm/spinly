@@ -18,6 +18,7 @@ class JobCreate(JobBase):
 class JobUpdate(BaseModel):
     status: Optional[JobStatus] = None
     result: Optional[dict] = None
+    started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     duration_s: Optional[float] = None
 

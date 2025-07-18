@@ -26,14 +26,14 @@ class BackgroundJob(Base):
     # Link to the user who requested the job, if they were logged in.
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     
+    # Timestamps and performance tracking.
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_s: Mapped[float | None] = mapped_column(Float)
+
     # Store the final list of recommended track IDs or other results.
     result: Mapped[dict | None] = mapped_column(JSONB)
-
-    # Timestamps and performance tracking.
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
-    started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
-    completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime)
-    duration_s: Mapped[float | None] = mapped_column(Float)
 
     owner = relationship("User")

@@ -15,6 +15,7 @@ from app.schemas.background_job import JobUpdate
 from app.models.background_job import JobStatus
 import uuid
 import time
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -273,9 +274,9 @@ async def run_recommendation_pipeline_and_update_job(
     """Runs the full recommendation pipeline and updates the job status and result."""
     job_service = JobService(db)
     logger.info(f"[Job ID: {job_id}] Starting recommendation pipeline.")
-    start_time = time.time()
+    start_time = datetime.datetime.now(datetime.timezone.utc)
 
-    await job_service.update_job(job_id, JobUpdate(status=JobStatus.RUNNING))
+    await job_service.update_job(job_id, JobUpdate(status=JobStatus.RUNNING, started_at=start_time))
 
     try:
         recommended_tracks = await get_track_recommendations(
@@ -286,7 +287,8 @@ async def run_recommendation_pipeline_and_update_job(
         )
 
         track_ids = [track.id for track in recommended_tracks]
-        duration = time.time() - start_time
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        duration = (end_time - start_time).total_seconds()
         logger.info(f"[Job ID: {job_id}] Pipeline completed successfully in {duration:.2f}s. Found {len(track_ids)} tracks.")
         
         await job_service.update_job(
@@ -294,12 +296,14 @@ async def run_recommendation_pipeline_and_update_job(
             JobUpdate(
                 status=JobStatus.COMPLETED,
                 result={"track_ids": track_ids},
+                completed_at=end_time,
                 duration_s=duration
             )
         )
 
     except Exception as e:
-        duration = time.time() - start_time
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        duration = (end_time - start_time).total_seconds()
         error_message = f"An unexpected error occurred: {str(e)}"
         logger.error(f"[Job ID: {job_id}] Pipeline failed after {duration:.2f}s. Error: {error_message}", exc_info=True)
         await job_service.update_job(
@@ -307,6 +311,7 @@ async def run_recommendation_pipeline_and_update_job(
             JobUpdate(
                 status=JobStatus.FAILED,
                 result={"error": error_message},
+                completed_at=end_time,
                 duration_s=duration
             )
         )
