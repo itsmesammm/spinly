@@ -57,7 +57,6 @@ async def root():
 
 if __name__ == "__main__":
     # This block runs when the script is executed directly (e.g., python Backend/main.py or by clicking 'Run' in an IDE)
-    # It will use the host and port defaults for uvicorn (127.0.0.1:8000)
-    # The --reload flag is not used here as IDEs often handle reloading separately.
-    # If you need reload when running this way, you can add reload=True to uvicorn.run()
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
+    # For Render deployment, use 0.0.0.0 and PORT from environment
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
